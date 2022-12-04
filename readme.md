@@ -42,6 +42,18 @@ yarn add chatgpt
 pnpm add chatgpt
 ```
 
+## Server
+
+To install and use the server, clone this repository and run in the root: 
+
+```
+yarn 
+npx tsx src/server.ts
+```
+
+Sending something like; http://localhost:3000/api/send?message=please+can+you+write+a+sorting+algorithm+in+c will now result in a JSON array of the response. 
+
+
 ## Usage
 
 ```ts
