@@ -1,8 +1,10 @@
 import delay from 'delay'
 import express from 'express'
 import { oraPromise } from 'ora'
-
+import { Dalle } from './dalle-node'
 import { ChatGPTAPI } from './chatgpt-api'
+import * as dotenv from 'dotenv'
+dotenv.config()
 
 /**
  * Example CLI for testing functionality.
@@ -48,6 +50,26 @@ async function main() {
     console.log('messages', messages)
     res.send(messages)
   });
+
+  // see; https://www.npmjs.com/package/dalle-node how to get the sess key
+  if (process.env.DALLE_API_KEY) {
+    console.log('Dalle is being used under /api/dalle with key ', process.env.DALLE_API_KEY)
+    const dalle = new Dalle(process.env.DALLE_API_KEY)
+    //const last10Runs = await dalle.list({ limit: 10 });
+    //console.log('last10Runs', last10Runs)
+    let credits = await dalle.getCredits()
+    console.log('Credits left', credits.aggregate_credits)
+    app.get('/api/dalle', async (req, res) => {
+      const message = req.query.message as string
+      const response = await dalle.generate(message)
+      console.log(response)
+      res.send(response)
+      credits = await dalle.getCredits()
+      console.log('Credits left', credits.aggregate_credits)
+
+    })
+  }
+
 
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
