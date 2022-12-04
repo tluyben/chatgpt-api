@@ -53,6 +53,23 @@ npx tsx src/server.ts
 
 Sending something like; http://localhost:3000/api/send?message=please+can+you+write+a+sorting+algorithm+in+c will now result in a JSON array of the response. 
 
+## Dall-e (offtopic)
+
+Added Dall-e because I wanted to experiment some more. You have to get the sess token as described here: 
+
+-  https://www.npmjs.com/package/dalle-node
+
+then add it to the .env file or 
+
+```
+export DALLE_API_KEY=sess-xxxxxxxxxxx
+```
+
+in the same terminal as where you are running te server. 
+
+Sending something like; http://localhost:3000/api/dalle?message=a+cat+with+a+hat+in+alice+in+wonderland will now result in a JSON array of the response. 
+
+Note that i'm not using the dalle-node package because it simply did not work for me; it did not in fact await the generating in any meaningful way, so I made a fork with a small change which does await properly. 
 
 ## Usage
 
