@@ -39,16 +39,19 @@ async function main() {
 
 
   const app = express()
-  const port = 3000
+  const port = 3001
 
+  let lastSeen = 0
   app.get('/api/send', async (req, res) => {
     const message = req.query.message as string
     const response = await api.sendMessage(message)
     const prompts = await api.getPrompts()
     console.log('prompts', prompts)
-    const messages = await api.getMessages()
+    const messages = await api.getLastMessage()
+
+
     console.log('messages', messages)
-    res.send(messages)
+    res.send([messages])
   });
 
   // see; https://www.npmjs.com/package/dalle-node how to get the sess key

@@ -21,6 +21,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "server": "npx tsx src/server.ts",
     "dev": "tsup --watch",
     "clean": "del build",
     "prebuild": "run-s clean",
