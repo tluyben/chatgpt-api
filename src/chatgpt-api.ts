@@ -1,195 +1,290 @@
-import delay from 'delay'
-import html2md from 'html-to-md'
-import { type ChromiumBrowserContext, type Page, chromium } from 'playwright'
+import ExpiryMap from 'expiry-map'
+import pTimeout, { TimeoutError } from 'p-timeout'
+import { v4 as uuidv4 } from 'uuid'
+
+import * as types from './types'
+import { ChatGPTConversation } from './chatgpt-conversation'
+import { fetch } from './fetch'
+import { fetchSSE } from './fetch-sse'
+import { markdownToText } from './utils'
+
+const KEY_ACCESS_TOKEN = 'accessToken'
+const USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36'
 
 export class ChatGPTAPI {
-  protected _userDataDir: string
-  protected _headless: boolean
+  protected _sessionToken: string
   protected _markdown: boolean
-  protected _chatUrl: string
+  protected _apiBaseUrl: string
+  protected _backendApiBaseUrl: string
+  protected _userAgent: string
 
-  protected _browser: ChromiumBrowserContext
-  protected _page: Page
+  // Stores access tokens for `accessTokenTTL` milliseconds before needing to refresh
+  // (defaults to 60 seconds)
+  protected _accessTokenCache: ExpiryMap<string, string>
 
   /**
-   * @param opts.userDataDir — Path to a directory for storing persistent chromium session data
-   * @param opts.chatUrl — OpenAI chat URL
-   * @param opts.headless - Whether or not to use headless mode
-   * @param opts.markdown — Whether or not to parse chat messages as markdown
+   * Creates a new client wrapper around the unofficial ChatGPT REST API.
+   *
+   * @param opts.sessionToken = **Required** OpenAI session token which can be found in a valid session's cookies (see readme for instructions)
+   * @param apiBaseUrl - Optional override; the base URL for ChatGPT webapp's API (`/api`)
+   * @param backendApiBaseUrl - Optional override; the base URL for the ChatGPT backend API (`/backend-api`)
+   * @param userAgent - Optional override; the `user-agent` header to use with ChatGPT requests
+   * @param accessTokenTTL - Optional override; how long in milliseconds access tokens should last before being forcefully refreshed
    */
-  constructor(
-    opts: {
-      /** @defaultValue `'/tmp/chatgpt'` **/
-      userDataDir?: string
+  constructor(opts: {
+    sessionToken: string
 
-      /** @defaultValue `'https://chat.openai.com/'` **/
-      chatUrl?: string
+    /** @defaultValue `true` **/
+    markdown?: boolean
 
-      /** @defaultValue `false` **/
-      headless?: boolean
+    /** @defaultValue `'https://chat.openai.com/api'` **/
+    apiBaseUrl?: string
 
-      /** @defaultValue `true` **/
-      markdown?: boolean
-    } = {}
-  ) {
+    /** @defaultValue `'https://chat.openai.com/backend-api'` **/
+    backendApiBaseUrl?: string
+
+    /** @defaultValue `'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36'` **/
+    userAgent?: string
+
+    /** @defaultValue 60000 (60 seconds) */
+    accessTokenTTL?: number
+  }) {
     const {
-      userDataDir = '/tmp/chatgpt',
-      chatUrl = 'https://chat.openai.com/',
-      headless = false,
-      markdown = true
+      sessionToken,
+      markdown = true,
+      apiBaseUrl = 'https://chat.openai.com/api',
+      backendApiBaseUrl = 'https://chat.openai.com/backend-api',
+      userAgent = USER_AGENT,
+      accessTokenTTL = 60000 // 60 seconds
     } = opts
 
-    this._userDataDir = userDataDir
-    this._headless = !!headless
-    this._chatUrl = chatUrl
+    this._sessionToken = sessionToken
     this._markdown = !!markdown
+    this._apiBaseUrl = apiBaseUrl
+    this._backendApiBaseUrl = backendApiBaseUrl
+    this._userAgent = userAgent
+
+    this._accessTokenCache = new ExpiryMap<string, string>(accessTokenTTL)
+
+    if (!this._sessionToken) {
+      throw new Error('ChatGPT invalid session token')
+    }
   }
 
-  async init(opts: { auth?: 'blocking' | 'eager' } = {}) {
-    const { auth = 'eager' } = opts
+  /**
+   * Sends a message to ChatGPT, waits for the response to resolve, and returns
+   * the response.
+   *
+   * If you want to receive a stream of partial responses, use `opts.onProgress`.
+   * If you want to receive the full response, including message and conversation IDs,
+   * you can use `opts.onConversationResponse` or use the `ChatGPTAPI.getConversation`
+   * helper.
+   *
+   * @param message - The prompt message to send
+   * @param opts.conversationId - Optional ID of a conversation to continue
+   * @param opts.parentMessageId - Optional ID of the previous message in the conversation
+   * @param opts.timeoutMs - Optional timeout in milliseconds (defaults to no timeout)
+   * @param opts.onProgress - Optional callback which will be invoked every time the partial response is updated
+   * @param opts.onConversationResponse - Optional callback which will be invoked every time the partial response is updated with the full conversation response
+   * @param opts.abortSignal - Optional callback used to abort the underlying `fetch` call using an [AbortController](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
+   *
+   * @returns The response from ChatGPT
+   */
+  async sendMessage(
+    message: string,
+    opts: types.SendMessageOptions = {}
+  ): Promise<string> {
+    const {
+      conversationId,
+      parentMessageId = uuidv4(),
+      timeoutMs,
+      onProgress,
+      onConversationResponse
+    } = opts
 
-    this._browser = await chromium.launchPersistentContext(this._userDataDir, {
-      headless: this._headless
-    })
+    let { abortSignal } = opts
 
-    this._page = await this._browser.newPage()
-    await this._page.goto(this._chatUrl)
-
-    // dismiss welcome modal
-    do {
-      const modalSelector = '[data-headlessui-state="open"]'
-
-      if (!(await this._page.$(modalSelector))) {
-        break
-      }
-
-      try {
-        await this._page.click(`${modalSelector} button:last-child`, {
-          timeout: 1000
-        })
-      } catch (err) {
-        // "next" button not found in welcome modal
-        break
-      }
-    } while (true)
-
-    if (auth === 'blocking') {
-      do {
-        const isSignedIn = await this.getIsSignedIn()
-        if (isSignedIn) {
-          break
-        }
-
-        console.log(
-          'Please sign in to ChatGPT using the Chromium browser window and dismiss the welcome modal...'
-        )
-
-        await delay(1000)
-      } while (true)
+    let abortController: AbortController = null
+    if (timeoutMs && !abortSignal) {
+      abortController = new AbortController()
+      abortSignal = abortController.signal
     }
 
-    return this._page
+    const accessToken = await this.refreshAccessToken()
+
+    const body: types.ConversationJSONBody = {
+      action: 'next',
+      messages: [
+        {
+          id: uuidv4(),
+          role: 'user',
+          content: {
+            content_type: 'text',
+            parts: [message]
+          }
+        }
+      ],
+      model: 'text-davinci-002-render',
+      parent_message_id: parentMessageId
+    }
+
+    if (conversationId) {
+      body.conversation_id = conversationId
+    }
+
+    const url = `${this._backendApiBaseUrl}/conversation`
+    let response = ''
+
+    const responseP = new Promise<string>((resolve, reject) => {
+      fetchSSE(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': this._userAgent
+        },
+        body: JSON.stringify(body),
+        signal: abortSignal,
+        onMessage: (data: string) => {
+          if (data === '[DONE]') {
+            return resolve(response)
+          }
+
+          try {
+            const parsedData: types.ConversationResponseEvent = JSON.parse(data)
+            if (onConversationResponse) {
+              onConversationResponse(parsedData)
+            }
+
+            const message = parsedData.message
+            // console.log('event', JSON.stringify(parsedData, null, 2))
+
+            if (message) {
+              let text = message?.content?.parts?.[0]
+
+              if (text) {
+                if (!this._markdown) {
+                  text = markdownToText(text)
+                }
+
+                response = text
+
+                if (onProgress) {
+                  onProgress(text)
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('fetchSSE onMessage unexpected error', err)
+            reject(err)
+          }
+        }
+      }).catch(reject)
+    })
+
+    if (timeoutMs) {
+      if (abortController) {
+        // This will be called when a timeout occurs in order for us to forcibly
+        // ensure that the underlying HTTP request is aborted.
+        ;(responseP as any).cancel = () => {
+          abortController.abort()
+        }
+      }
+
+      return pTimeout(responseP, {
+        milliseconds: timeoutMs,
+        message: 'ChatGPT timed out waiting for response'
+      })
+    } else {
+      return responseP
+    }
   }
 
-  async getIsSignedIn() {
+  /**
+   * @returns `true` if the client has a valid acces token or `false` if refreshing
+   * the token fails.
+   */
+  async getIsAuthenticated() {
     try {
-      const inputBox = await this._getInputBox()
-      return !!inputBox
+      void (await this.refreshAccessToken())
+      return true
     } catch (err) {
-      // can happen when navigating during login
       return false
     }
   }
 
-  async getLastMessage(): Promise<string | null> {
-    const messages = await this.getMessages()
+  /**
+   * Refreshes the client's access token which will succeed only if the session
+   * is still valid.
+   */
+  async ensureAuth() {
+    return await this.refreshAccessToken()
+  }
 
-    if (messages) {
-      return messages[messages.length - 1]
-    } else {
-      return null
+  /**
+   * Attempts to refresh the current access token using the ChatGPT
+   * `sessionToken` cookie.
+   *
+   * Access tokens will be cached for up to `accessTokenTTL` milliseconds to
+   * prevent refreshing access tokens too frequently.
+   *
+   * @returns A valid access token
+   * @throws An error if refreshing the access token fails.
+   */
+  async refreshAccessToken(): Promise<string> {
+    const cachedAccessToken = this._accessTokenCache.get(KEY_ACCESS_TOKEN)
+    if (cachedAccessToken) {
+      return cachedAccessToken
     }
-  }
 
-  async getPrompts(): Promise<string[]> {
-    // Get all prompts
-    const messages = await this._page.$$(
-      '[class*="ConversationItem__Message"]:has([class*="ConversationItem__ActionButtons"]):has([class*="ConversationItem__Role"] [class*="Avatar__Wrapper"])'
-    )
+    try {
+      const res = await fetch('https://chat.openai.com/api/auth/session', {
+        headers: {
+          cookie: `__Secure-next-auth.session-token=${this._sessionToken}`,
+          'user-agent': this._userAgent
+        }
+      }).then((r) => {
+        if (!r.ok) {
+          throw new Error(`${r.status} ${r.statusText}`)
+        }
 
-    // prompts are always plaintext
-    return Promise.all(messages.map((a) => a.innerText()))
-  }
-
-  async getMessages(): Promise<string[]> {
-    // Get all complete messages
-    // (in-progress messages that are being streamed back don't contain action buttons)
-    const messages = await this._page.$$(
-      '[class*="ConversationItem__Message"]:has([class*="ConversationItem__ActionButtons"]):not(:has([class*="ConversationItem__Role"] [class*="Avatar__Wrapper"]))'
-    )
-
-    if (this._markdown) {
-      const htmlMessages = await Promise.all(messages.map((a) => a.innerHTML()))
-
-      const markdownMessages = htmlMessages.map((messageHtml) => {
-        // parse markdown from message HTML
-        messageHtml = messageHtml.replace('Copy code</button>', '</button>')
-        return html2md(messageHtml, {
-          ignoreTags: [
-            'button',
-            'svg',
-            'style',
-            'form',
-            'noscript',
-            'script',
-            'meta',
-            'head'
-          ],
-          skipTags: ['button', 'svg']
-        })
+        return r.json() as any as types.SessionResult
       })
 
-      return markdownMessages
-    } else {
-      // plaintext
-      const plaintextMessages = await Promise.all(
-        messages.map((a) => a.innerText())
-      )
-      return plaintextMessages
+      const accessToken = res?.accessToken
+
+      if (!accessToken) {
+        throw new Error('Unauthorized')
+      }
+
+      const error = res?.error
+      if (error) {
+        if (error === 'RefreshAccessTokenError') {
+          throw new Error('session token may have expired')
+        } else {
+          throw new Error(error)
+        }
+      }
+
+      this._accessTokenCache.set(KEY_ACCESS_TOKEN, accessToken)
+      return accessToken
+    } catch (err: any) {
+      throw new Error(`ChatGPT failed to refresh auth token. ${err.toString()}`)
     }
   }
 
-  async sendMessage(message: string): Promise<string> {
-    const inputBox = await this._getInputBox()
-    if (!inputBox) throw new Error('not signed in')
-
-    const lastMessage = await this.getLastMessage()
-
-    await inputBox.click({ force: true })
-    await inputBox.fill(message, { force: true })
-    await inputBox.press('Enter')
-
-    do {
-      await delay(1000)
-
-      // TODO: this logic needs some work because we can have repeat messages...
-      const newLastMessage = await this.getLastMessage()
-      if (
-        newLastMessage &&
-        lastMessage?.toLowerCase() !== newLastMessage?.toLowerCase()
-      ) {
-        return newLastMessage
-      }
-    } while (true)
-  }
-
-  async close() {
-    return await this._browser.close()
-  }
-
-  protected async _getInputBox(): Promise<any> {
-    return this._page.$(
-      'div[class*="PromptTextarea__TextareaWrapper"] textarea'
-    )
+  /**
+   * Gets a new ChatGPTConversation instance, which can be used to send multiple
+   * messages as part of a single conversation.
+   *
+   * @param opts.conversationId - Optional ID of the previous message in a conversation
+   * @param opts.parentMessageId - Optional ID of the previous message in a conversation
+   * @returns The new conversation instance
+   */
+  getConversation(
+    opts: { conversationId?: string; parentMessageId?: string } = {}
+  ) {
+    return new ChatGPTConversation(this, opts)
   }
 }

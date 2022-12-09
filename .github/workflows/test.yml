@@ -12,7 +12,6 @@ jobs:
         node-version:
           - 18
           - 16
-          - 14
 
     steps:
       - name: Checkout
@@ -48,4 +47,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run test
+        env:
+          SESSION_TOKEN: 'fake-session-token-for-CI'
         run: pnpm run test

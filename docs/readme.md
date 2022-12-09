@@ -1,17 +1,24 @@
 chatgpt / [Exports](modules.md)
 
+<p align="center">
+  <img alt="Example usage" src="/media/demo.gif">
+</p>
+
 # ChatGPT API <!-- omit in toc -->
 
-> Node.js wrapper around [ChatGPT](https://openai.com/blog/chatgpt/). Uses headless Chrome until the official API is released.
+> Node.js client for the unofficial [ChatGPT](https://openai.com/blog/chatgpt/) API.
 
 [![NPM](https://img.shields.io/npm/v/chatgpt.svg)](https://www.npmjs.com/package/chatgpt) [![Build Status](https://github.com/transitive-bullshit/chatgpt-api/actions/workflows/test.yml/badge.svg)](https://github.com/transitive-bullshit/chatgpt-api/actions/workflows/test.yml) [![MIT License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/transitive-bullshit/chatgpt-api/blob/main/license) [![Prettier Code Formatting](https://img.shields.io/badge/code_style-prettier-brightgreen.svg)](https://prettier.io)
 
 - [Intro](#intro)
-- [How it works](#how-it-works)
 - [Install](#install)
 - [Usage](#usage)
-- [Docs](#docs)
-- [Related](#related)
+  - [Docs](#docs)
+  - [Demos](#demos)
+  - [Session Tokens](#session-tokens)
+- [Projects](#projects)
+- [Compatibility](#compatibility)
+- [Credits](#credits)
 - [License](#license)
 
 ## Intro
@@ -20,23 +27,10 @@ This package is a Node.js wrapper around [ChatGPT](https://openai.com/blog/chatg
 
 You can use it to start building projects powered by ChatGPT like chatbots, websites, etc...
 
-## How it works
-
-We use headless Chromium via [Playwright](https://playwright.dev) to automate the webapp, so **you still need to have access to ChatGPT**. It just makes building API-like integrations much easier.
-
-Chromium will be opened in non-headless mode by default, which is important because the first time you run `ChatGPTAPI.init()`, you'll need to log in manually. We launch Chromium with a persistent context, however, so you shouldn't need to keep re-logging in after the first time. When you log in the first time, _make sure that you also dismiss the welcome modal_.
-
-> **Note**
-> We'll replace headless chrome with the official API once it's released.
-
 ## Install
 
 ```bash
-npm install --save chatgpt
-# or
-yarn add chatgpt
-# or
-pnpm add chatgpt
+npm install chatgpt
 ```
 
 ## Usage
@@ -45,69 +39,170 @@ pnpm add chatgpt
 import { ChatGPTAPI } from 'chatgpt'
 
 async function example() {
-  const api = new ChatGPTAPI()
+  // sessionToken is required; see below for details
+  const api = new ChatGPTAPI({
+    sessionToken: process.env.SESSION_TOKEN
+  })
 
-  // open chromium and wait until you've logged in
-  await api.init({ auth: 'blocking' })
+  // ensure the API is properly authenticated
+  await api.ensureAuth()
 
   // send a message and wait for the response
   const response = await api.sendMessage(
     'Write a python version of bubble sort. Do not include example usage.'
   )
+
+  // response is a markdown-formatted string
   console.log(response)
 }
 ```
 
-Which outputs a similar reponse to this (as a markdown string, including the _```python_ code block prefix):
-
-```python
-def bubble_sort(lst):
-  # Set the initial flag to True to start the loop
-  swapped = True
-
-  # Keep looping until there are no more swaps
-  while swapped:
-    # Set the flag to False initially
-    swapped = False
-
-    # Loop through the list
-    for i in range(len(lst) - 1):
-      # If the current element is greater than the next element,
-      # swap them and set the flag to True
-      if lst[i] > lst[i + 1]:
-        lst[i], lst[i + 1] = lst[i + 1], lst[i]
-        swapped = True
-
-  # Return the sorted list
-  return lst
-```
-
-By default, ChatGPT responses are parsed as markdown using [html-to-md](https://github.com/stonehank/html-to-md). I've found that this works really well during my testing, but if you'd rather output plaintext, you can use:
+The default ChatGPT responses are formatted as markdown. If you want to work with plaintext only, you can use:
 
 ```ts
-const api = new ChatGPTAPI({ markdown: false })
+const api = new ChatGPTAPI({
+  sessionToken: process.env.SESSION_TOKEN,
+  markdown: false
+})
 ```
 
-A full [example](./src/example.ts) is included for testing purposes:
+If you want to automatically track the conversation, you can use `ChatGPTAPI.getConversation()`:
+
+```ts
+const api = new ChatGPTAPI({
+  sessionToken: process.env.SESSION_TOKEN
+})
+
+const conversation = api.getConversation()
+
+// send a message and wait for the response
+const response0 = await conversation.sendMessage('What is OpenAI?')
+
+// send a follow-up prompt to the previous message and wait for the response
+const response1 = await conversation.sendMessage('Can you expand on that?')
+
+// send another follow-up to the same conversation
+const response2 = await conversation.sendMessage('Oh cool; thank you')
+```
+
+Sometimes, ChatGPT will hang for an extended period of time before sending it's response. This may be due to rate limiting or it may be due to OpenAI's servers being overloaded.
+
+To mitigate this issues, you can add a timeout like this:
+
+```ts
+// timeout after 2 minutes (which will also abort the underlying HTTP request)
+const response = await api.sendMessage('this is a timeout test', {
+  timeoutMs: 2 * 60 * 1000
+})
+```
+
+<details>
+<summary>Usage in CommonJS (Dynamic import)</summary>
+
+```js
+async function example() {
+  // To use ESM in CommonJS, you can use a dynamic import
+  const { ChatGPTAPI } = await import('chatgpt')
+
+  const api = new ChatGPTAPI({
+    sessionToken: process.env.SESSION_TOKEN
+  })
+  await api.ensureAuth()
+
+  const response = await api.sendMessage('Hello World!')
+  console.log(response)
+}
+```
+
+</details>
+
+### Docs
+
+See the [auto-generated docs](./docs/classes/ChatGPTAPI.md) for more info on methods and parameters.
+
+### Demos
+
+A [basic demo](./src/demo.ts) is included for testing purposes:
 
 ```bash
-# clone repo
-# install node deps
-# then run
-npx tsx src/example.ts
+# 1. clone repo
+# 2. install node deps
+# 3. set `SESSION_TOKEN` in .env
+# 4. run:
+npx tsx src/demo.ts
 ```
 
-## Docs
+A [conversation demo](./src/demo-conversation.ts) is also included:
 
-See the [auto-generated docs](./docs/classes/ChatGPTAPI.md) for more info on methods parameters.
+```bash
+# 1. clone repo
+# 2. install node deps
+# 3. set `SESSION_TOKEN` in .env
+# 4. run:
+npx tsx src/demo-conversation.ts
+```
 
-## Related
+### Session Tokens
 
-- Inspired by this [Go module](https://github.com/danielgross/whatsapp-gpt) by [Daniel Gross](https://github.com/danielgross)
-- [Python port](https://github.com/taranjeet/chatgpt-api)
+**This package requires a valid session token from ChatGPT to access it's unofficial REST API.**
+
+To get a session token:
+
+1. Go to https://chat.openai.com/chat and log in or sign up.
+2. Open dev tools.
+3. Open `Application` > `Cookies`.
+   ![ChatGPT cookies](./media/session-token.png)
+4. Copy the value for `__Secure-next-auth.session-token` and save it to your environment.
+
+If you want to run the built-in demo, store this value as `SESSION_TOKEN` in a local `.env` file.
+
+> **Note**
+> This package will switch to using the official API once it's released.
+
+> **Note**
+> Prior to v1.0.0, this package used a headless browser via [Playwright](https://playwright.dev/) to automate the web UI. Here are the [docs for the initial browser version](https://github.com/transitive-bullshit/chatgpt-api/tree/v0.4.2).
+
+## Projects
+
+All of these awesome projects are built using the `chatgpt` package. 🤯
+
+- [Twitter Bot](https://github.com/transitive-bullshit/chatgpt-twitter-bot) powered by ChatGPT ✨
+  - Mention [@ChatGPTBot](https://twitter.com/ChatGPTBot) on Twitter with your prompt to try it out
+- [Chrome Extension](https://github.com/gragland/chatgpt-everywhere) ([demo](https://twitter.com/gabe_ragland/status/1599466486422470656))
+- [VSCode Extension #1](https://github.com/mpociot/chatgpt-vscode) ([demo](https://twitter.com/marcelpociot/status/1599180144551526400))
+- [VSCode Extension #2](https://github.com/barnesoir/chatgpt-vscode-plugin) ([marketplace](https://marketplace.visualstudio.com/items?itemName=JayBarnes.chatgpt-vscode-plugin))
+- [VSCode Extension #3](https://github.com/gencay/vscode-chatgpt) ([marketplace](https://marketplace.visualstudio.com/items?itemName=gencay.vscode-chatgpt))
+- [Raycast Extension](https://github.com/abielzulio/chatgpt-raycast) ([demo](https://twitter.com/abielzulio/status/1600176002042191875))
+- [Go Telegram Bot](https://github.com/m1guelpf/chatgpt-telegram)
+- [GitHub ProBot](https://github.com/oceanlvr/ChatGPTBot)
+- [Discord Bot](https://github.com/onury5506/Discord-ChatGPT-Bot)
+- [WeChat Bot](https://github.com/AutumnWhj/ChatGPT-wechat-bot)
+- [Lovelines.xyz](https://lovelines.xyz)
+- [EXM smart contracts](https://github.com/decentldotland/molecule)
+- [Flutter ChatGPT API](https://github.com/coskuncay/flutter_chatgpt_api)
+
+If you create a cool integration, feel free to open a PR and add it to the list.
+
+## Compatibility
+
+This package is ESM-only. It supports:
+
+- Node.js >= 16.8
+  - If you need Node.js 14 support, use [`v1.4.0`](https://github.com/transitive-bullshit/chatgpt-api/releases/tag/v1.4.0)
+- Edge runtimes like CF workers and Vercel edge functions
+- Modern browsers
+  - Mainly chrome extensions where your code is protected to a degree
+  - **We do not recommend using `chatgpt` from client-side browser code** because it would expose your private session token
+  - If you want to build a website using `chatgpt`, we recommend using it only from your backend API
+
+## Credits
+
+- Huge thanks to [@RomanHotsiy](https://github.com/RomanHotsiy), [@ElijahPepe](https://github.com/ElijahPepe), and all the other contributors 💪
+- The original browser version was inspired by this [Go module](https://github.com/danielgross/whatsapp-gpt) by [Daniel Gross](https://github.com/danielgross)
+- The original REST version was inspired by [chat-gpt-google-extension](https://github.com/wong2/chat-gpt-google-extension) by [@wong2](https://github.com/wong2)
 
 ## License
 
 MIT © [Travis Fischer](https://transitivebullsh.it)
 
-Support my open source work by <a href="https://twitter.com/transitive_bs">following me on twitter <img src="https://storage.googleapis.com/saasify-assets/twitter-logo.svg" alt="twitter" height="24px" align="center"></a>
+If you found this project interesting, please consider [sponsoring me](https://github.com/sponsors/transitive-bullshit) or <a href="https://twitter.com/transitive_bs">following me on twitter <img src="https://storage.googleapis.com/saasify-assets/twitter-logo.svg" alt="twitter" height="24px" align="center"></a>
