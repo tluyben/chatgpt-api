@@ -7,15 +7,20 @@
 ### Classes
 
 - [ChatGPTAPI](classes/ChatGPTAPI.md)
+- [ChatGPTAPIBrowser](classes/ChatGPTAPIBrowser.md)
 - [ChatGPTConversation](classes/ChatGPTConversation.md)
+- [ChatGPTError](classes/ChatGPTError.md)
 
 ### Type Aliases
 
 - [AvailableModerationModels](modules.md#availablemoderationmodels)
+- [ChatError](modules.md#chaterror)
+- [ChatResponse](modules.md#chatresponse)
 - [ContentType](modules.md#contenttype)
 - [ConversationJSONBody](modules.md#conversationjsonbody)
 - [ConversationResponseEvent](modules.md#conversationresponseevent)
 - [Message](modules.md#message)
+- [MessageActionType](modules.md#messageactiontype)
 - [MessageContent](modules.md#messagecontent)
 - [MessageFeedbackJSONBody](modules.md#messagefeedbackjsonbody)
 - [MessageFeedbackRating](modules.md#messagefeedbackrating)
@@ -26,6 +31,7 @@
 - [ModelsResult](modules.md#modelsresult)
 - [ModerationsJSONBody](modules.md#moderationsjsonbody)
 - [ModerationsJSONResult](modules.md#moderationsjsonresult)
+- [OpenAIAuth](modules.md#openaiauth)
 - [Prompt](modules.md#prompt)
 - [PromptContent](modules.md#promptcontent)
 - [Role](modules.md#role)
@@ -36,7 +42,14 @@
 
 ### Functions
 
+- [browserPostEventStream](modules.md#browserposteventstream)
+- [defaultChromeExecutablePath](modules.md#defaultchromeexecutablepath)
+- [getBrowser](modules.md#getbrowser)
+- [getOpenAIAuth](modules.md#getopenaiauth)
+- [isRelevantRequest](modules.md#isrelevantrequest)
 - [markdownToText](modules.md#markdowntotext)
+- [maximizePage](modules.md#maximizepage)
+- [minimizePage](modules.md#minimizepage)
 
 ## Type Aliases
 
@@ -46,7 +59,50 @@
 
 #### Defined in
 
-[types.ts:109](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L109)
+[src/types.ts:109](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L109)
+
+___
+
+### ChatError
+
+Ƭ **ChatError**: `Object`
+
+#### Type declaration
+
+| Name | Type |
+| :------ | :------ |
+| `conversationId?` | `string` |
+| `conversationResponse?` | [`ConversationResponseEvent`](modules.md#conversationresponseevent) |
+| `error` | { `message`: `string` ; `statusCode?`: `number` ; `statusText?`: `string`  } |
+| `error.message` | `string` |
+| `error.statusCode?` | `number` |
+| `error.statusText?` | `string` |
+| `messageId?` | `string` |
+| `response` | ``null`` |
+
+#### Defined in
+
+[src/types.ts:301](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L301)
+
+___
+
+### ChatResponse
+
+Ƭ **ChatResponse**: `Object`
+
+#### Type declaration
+
+| Name | Type |
+| :------ | :------ |
+| `conversationId` | `string` |
+| `conversationResponse?` | [`ConversationResponseEvent`](modules.md#conversationresponseevent) |
+| `error` | ``null`` |
+| `messageId` | `string` |
+| `response` | `string` |
+
+#### Defined in
+
+[src/types.ts:309](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L309)
 
 ___
 
@@ -56,7 +112,7 @@ ___
 
 #### Defined in
 
-[types.ts:1](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L1)
+[src/types.ts:1](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L1)
 
 ___
 
@@ -78,7 +134,7 @@ https://chat.openapi.com/backend-api/conversation
 
 #### Defined in
 
-[types.ts:134](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L134)
+[src/types.ts:134](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L134)
 
 ___
 
@@ -96,7 +152,7 @@ ___
 
 #### Defined in
 
-[types.ts:251](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L251)
+[src/types.ts:251](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L251)
 
 ___
 
@@ -121,7 +177,17 @@ ___
 
 #### Defined in
 
-[types.ts:257](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L257)
+[src/types.ts:257](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L257)
+
+___
+
+### MessageActionType
+
+Ƭ **MessageActionType**: ``"next"`` \| ``"variant"``
+
+#### Defined in
+
+[src/types.ts:276](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L276)
 
 ___
 
@@ -138,7 +204,7 @@ ___
 
 #### Defined in
 
-[types.ts:270](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L270)
+[src/types.ts:270](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L270)
 
 ___
 
@@ -160,7 +226,7 @@ https://chat.openapi.com/backend-api/conversation/message_feedback
 
 #### Defined in
 
-[types.ts:193](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L193)
+[src/types.ts:193](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L193)
 
 ___
 
@@ -170,7 +236,7 @@ ___
 
 #### Defined in
 
-[types.ts:249](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L249)
+[src/types.ts:249](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L249)
 
 ___
 
@@ -190,7 +256,7 @@ ___
 
 #### Defined in
 
-[types.ts:222](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L222)
+[src/types.ts:222](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L222)
 
 ___
 
@@ -200,7 +266,7 @@ ___
 
 #### Defined in
 
-[types.ts:220](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L220)
+[src/types.ts:220](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L220)
 
 ___
 
@@ -210,7 +276,7 @@ ___
 
 #### Defined in
 
-[types.ts:275](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L275)
+[src/types.ts:275](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L275)
 
 ___
 
@@ -228,7 +294,7 @@ ___
 
 #### Defined in
 
-[types.ts:77](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L77)
+[src/types.ts:77](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L77)
 
 ___
 
@@ -246,7 +312,7 @@ https://chat.openapi.com/backend-api/models
 
 #### Defined in
 
-[types.ts:70](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L70)
+[src/types.ts:70](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L70)
 
 ___
 
@@ -265,7 +331,7 @@ https://chat.openapi.com/backend-api/moderations
 
 #### Defined in
 
-[types.ts:97](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L97)
+[src/types.ts:97](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L97)
 
 ___
 
@@ -285,7 +351,29 @@ https://chat.openapi.com/backend-api/moderations
 
 #### Defined in
 
-[types.ts:114](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L114)
+[src/types.ts:114](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L114)
+
+___
+
+### OpenAIAuth
+
+Ƭ **OpenAIAuth**: `Object`
+
+Represents everything that's required to pass into `ChatGPTAPI` in order
+to authenticate with the unofficial ChatGPT API.
+
+#### Type declaration
+
+| Name | Type |
+| :------ | :------ |
+| `clearanceToken` | `string` |
+| `cookies?` | `Record`<`string`, `Protocol.Network.Cookie`\> |
+| `sessionToken` | `string` |
+| `userAgent` | `string` |
+
+#### Defined in
+
+[src/openai-auth.ts:20](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/openai-auth.ts#L20)
 
 ___
 
@@ -303,7 +391,7 @@ ___
 
 #### Defined in
 
-[types.ts:161](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L161)
+[src/types.ts:161](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L161)
 
 ___
 
@@ -320,7 +408,7 @@ ___
 
 #### Defined in
 
-[types.ts:178](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L178)
+[src/types.ts:178](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L178)
 
 ___
 
@@ -330,7 +418,7 @@ ___
 
 #### Defined in
 
-[types.ts:3](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L3)
+[src/types.ts:3](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L3)
 
 ___
 
@@ -340,7 +428,7 @@ ___
 
 #### Defined in
 
-[types.ts:286](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L286)
+[src/types.ts:289](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L289)
 
 ___
 
@@ -353,7 +441,9 @@ ___
 | Name | Type |
 | :------ | :------ |
 | `abortSignal?` | `AbortSignal` |
+| `action?` | [`MessageActionType`](modules.md#messageactiontype) |
 | `conversationId?` | `string` |
+| `messageId?` | `string` |
 | `onConversationResponse?` | (`response`: [`ConversationResponseEvent`](modules.md#conversationresponseevent)) => `void` |
 | `onProgress?` | (`partialResponse`: `string`) => `void` |
 | `parentMessageId?` | `string` |
@@ -361,7 +451,7 @@ ___
 
 #### Defined in
 
-[types.ts:277](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L277)
+[src/types.ts:278](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L278)
 
 ___
 
@@ -382,7 +472,7 @@ https://chat.openapi.com/api/auth/session
 
 #### Defined in
 
-[types.ts:8](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L8)
+[src/types.ts:8](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L8)
 
 ___
 
@@ -394,9 +484,9 @@ ___
 
 | Name | Type | Description |
 | :------ | :------ | :------ |
-| `email` | `string` | Email of the user |
-| `features` | `string`[] \| [] | Features the user is in |
-| `groups` | `string`[] \| [] | Groups the user is in |
+| `email?` | `string` | Email of the user |
+| `features` | `string`[] | Features the user is in |
+| `groups` | `string`[] | Groups the user is in |
 | `id` | `string` | ID of the user |
 | `image` | `string` | Image of the user |
 | `name` | `string` | Name of the user |
@@ -404,9 +494,137 @@ ___
 
 #### Defined in
 
-[types.ts:30](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/types.ts#L30)
+[src/types.ts:30](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/types.ts#L30)
 
 ## Functions
+
+### browserPostEventStream
+
+▸ **browserPostEventStream**(`url`, `accessToken`, `body`, `timeoutMs?`): `Promise`<[`ChatError`](modules.md#chaterror) \| [`ChatResponse`](modules.md#chatresponse)\>
+
+This function is injected into the ChatGPT webapp page using puppeteer. It
+has to be fully self-contained, so we copied a few third-party sources and
+included them in here.
+
+#### Parameters
+
+| Name | Type |
+| :------ | :------ |
+| `url` | `string` |
+| `accessToken` | `string` |
+| `body` | [`ConversationJSONBody`](modules.md#conversationjsonbody) |
+| `timeoutMs?` | `number` |
+
+#### Returns
+
+`Promise`<[`ChatError`](modules.md#chaterror) \| [`ChatResponse`](modules.md#chatresponse)\>
+
+#### Defined in
+
+[src/utils.ts:73](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/utils.ts#L73)
+
+___
+
+### defaultChromeExecutablePath
+
+▸ **defaultChromeExecutablePath**(): `string`
+
+Gets the default path to chrome's executable for the current platform.
+
+#### Returns
+
+`string`
+
+#### Defined in
+
+[src/openai-auth.ts:218](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/openai-auth.ts#L218)
+
+___
+
+### getBrowser
+
+▸ **getBrowser**(`opts?`): `Promise`<`Browser`\>
+
+Launches a non-puppeteer instance of Chrome. Note that in my testing, I wasn't
+able to use the built-in `puppeteer` version of Chromium because Cloudflare
+recognizes it and blocks access.
+
+#### Parameters
+
+| Name | Type |
+| :------ | :------ |
+| `opts` | `PuppeteerLaunchOptions` & { `captchaToken?`: `string`  } |
+
+#### Returns
+
+`Promise`<`Browser`\>
+
+#### Defined in
+
+[src/openai-auth.ts:184](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/openai-auth.ts#L184)
+
+___
+
+### getOpenAIAuth
+
+▸ **getOpenAIAuth**(`__namedParameters`): `Promise`<[`OpenAIAuth`](modules.md#openaiauth)\>
+
+Bypasses OpenAI's use of Cloudflare to get the cookies required to use
+ChatGPT. Uses Puppeteer with a stealth plugin under the hood.
+
+If you pass `email` and `password`, then it will log into the account and
+include a `sessionToken` in the response.
+
+If you don't pass `email` and `password`, then it will just return a valid
+`clearanceToken`.
+
+This can be useful because `clearanceToken` expires after ~2 hours, whereas
+`sessionToken` generally lasts much longer. We recommend renewing your
+`clearanceToken` every hour or so and creating a new instance of `ChatGPTAPI`
+with your updated credentials.
+
+#### Parameters
+
+| Name | Type |
+| :------ | :------ |
+| `__namedParameters` | `Object` |
+| `__namedParameters.browser?` | `Browser` |
+| `__namedParameters.captchaToken?` | `string` |
+| `__namedParameters.email?` | `string` |
+| `__namedParameters.isGoogleLogin?` | `boolean` |
+| `__namedParameters.page?` | `Page` |
+| `__namedParameters.password?` | `string` |
+| `__namedParameters.timeoutMs?` | `number` |
+
+#### Returns
+
+`Promise`<[`OpenAIAuth`](modules.md#openaiauth)\>
+
+#### Defined in
+
+[src/openai-auth.ts:42](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/openai-auth.ts#L42)
+
+___
+
+### isRelevantRequest
+
+▸ **isRelevantRequest**(`url`): `boolean`
+
+#### Parameters
+
+| Name | Type |
+| :------ | :------ |
+| `url` | `string` |
+
+#### Returns
+
+`boolean`
+
+#### Defined in
+
+[src/utils.ts:39](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/utils.ts#L39)
+
+___
 
 ### markdownToText
 
@@ -424,4 +642,44 @@ ___
 
 #### Defined in
 
-[utils.ts:4](https://github.com/transitive-bullshit/chatgpt-api/blob/20c376e/src/utils.ts#L4)
+[src/utils.ts:12](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/utils.ts#L12)
+
+___
+
+### maximizePage
+
+▸ **maximizePage**(`page`): `Promise`<`void`\>
+
+#### Parameters
+
+| Name | Type |
+| :------ | :------ |
+| `page` | `Page` |
+
+#### Returns
+
+`Promise`<`void`\>
+
+#### Defined in
+
+[src/utils.ts:29](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/utils.ts#L29)
+
+___
+
+### minimizePage
+
+▸ **minimizePage**(`page`): `Promise`<`void`\>
+
+#### Parameters
+
+| Name | Type |
+| :------ | :------ |
+| `page` | `Page` |
+
+#### Returns
+
+`Promise`<`void`\>
+
+#### Defined in
+
+[src/utils.ts:19](https://github.com/transitive-bullshit/chatgpt-api/blob/d27238c/src/utils.ts#L19)

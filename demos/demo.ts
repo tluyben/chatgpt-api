@@ -1,7 +1,8 @@
+import delay from 'delay'
 import dotenv from 'dotenv-safe'
 import { oraPromise } from 'ora'
 
-import { ChatGPTAPI } from '.'
+import { ChatGPTAPIBrowser } from '../src'
 
 dotenv.config()
 
@@ -9,12 +10,20 @@ dotenv.config()
  * Demo CLI for testing basic functionality.
  *
  * ```
- * npx tsx src/demo.ts
+ * npx tsx demos/demo.ts
  * ```
  */
 async function main() {
-  const api = new ChatGPTAPI({ sessionToken: process.env.SESSION_TOKEN })
-  await api.ensureAuth()
+  const email = process.env.OPENAI_EMAIL
+  const password = process.env.OPENAI_PASSWORD
+
+  const api = new ChatGPTAPIBrowser({
+    email,
+    password,
+    debug: false,
+    minimize: true
+  })
+  await api.init()
 
   const prompt =
     'Write a python version of bubble sort. Do not include example usage.'
@@ -23,6 +32,7 @@ async function main() {
     text: prompt
   })
 
+  await api.close()
   return response
 }
 
