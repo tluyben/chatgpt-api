@@ -3,7 +3,7 @@ import delay from 'delay'
 import express from 'express'
 import { oraPromise } from 'ora'
 
-import { ChatGPTAPI } from './chatgpt-api'
+import { ChatGPTAPIBrowser } from './chatgpt-api-browser'
 import { Dalle } from './dalle-node'
 
 dotenv.config()
@@ -38,24 +38,35 @@ async function main() {
   //     'Please sign in to ChatGPT and dismiss the welcome modal'
   //   )
   // }
-  const api = new ChatGPTAPI({
-    sessionToken: process.env.SESSION_TOKEN
+  // const api = new ChatGPTAPI({
+  //   sessionToken: process.env.SESSION_TOKEN
+  // })
+  // await api.ensureAuth()
+
+  const api = new ChatGPTAPIBrowser({
+    email: process.env.OPENAI_EMAIL,
+    password: process.env.OPENAI_PASSWORD
   })
-  await api.ensureAuth()
+  await api.initSession()
 
   const app = express()
   const port = 3001
 
   let lastSeen = 0
+  let response = null
+
   app.get('/api/send', async (req, res) => {
     const message = req.query.message as string
-    const response = await api.sendMessage(message)
+    response = await api.sendMessage(message, {
+      conversationId: response?.conversationId,
+      parentMessageId: response?.messageId
+    })
     //const prompts = await api.getPrompts()
     //console.log('prompts', prompts)
     // const messages = await api.getLastMessage()
 
-    console.log('responses', response)
-    res.send([response])
+    console.log('responses', response.response)
+    res.send([response.response])
   })
 
   // see; https://www.npmjs.com/package/dalle-node how to get the sess key
