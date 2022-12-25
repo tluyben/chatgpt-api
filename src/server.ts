@@ -12,37 +12,6 @@ dotenv.config()
  * Example CLI for testing functionality.
  */
 async function main() {
-  // const api = new ChatGPTAPI()
-  // await api.init()
-
-  // const isSignedIn = await api.getIsSignedIn()
-
-  // if (!isSignedIn) {
-  //   // Wait until the user signs in via the chromium browser
-  //   await oraPromise(
-  //     new Promise<void>(async (resolve, reject) => {
-  //       do {
-  //         try {
-  //           await delay(1000)
-
-  //           const isSignedIn = await api.getIsSignedIn()
-
-  //           if (isSignedIn) {
-  //             return resolve()
-  //           }
-  //         } catch (err) {
-  //           return reject(err)
-  //         }
-  //       } while (true)
-  //     }),
-  //     'Please sign in to ChatGPT and dismiss the welcome modal'
-  //   )
-  // }
-  // const api = new ChatGPTAPI({
-  //   sessionToken: process.env.SESSION_TOKEN
-  // })
-  // await api.ensureAuth()
-
   const api = new ChatGPTAPIBrowser({
     email: process.env.OPENAI_EMAIL,
     password: process.env.OPENAI_PASSWORD
@@ -61,9 +30,6 @@ async function main() {
       conversationId: response?.conversationId,
       parentMessageId: response?.messageId
     })
-    //const prompts = await api.getPrompts()
-    //console.log('prompts', prompts)
-    // const messages = await api.getLastMessage()
 
     console.log('responses', response.response)
     res.send([response.response])
