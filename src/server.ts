@@ -19,7 +19,12 @@ async function main() {
   await api.initSession()
 
   const app = express()
-  const port = 3001
+  let port = 3001
+
+  // read the prot from environment variable CHATGPT_PORT
+  if (process.env.CHATGPT_PORT) {
+    port = parseInt(process.env.CHATGPT_PORT)
+  }
 
   let lastSeen = 0
   let response = null
