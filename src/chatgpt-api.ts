@@ -251,6 +251,7 @@ export class ChatGPTAPI {
             }
 
             const response: types.openai.CompletionResponse = await res.json()
+
             if (this._debug) {
               console.log(response)
             }
@@ -264,7 +265,7 @@ export class ChatGPTAPI {
           }
         }
       }
-    ).then((message) => {
+    ).then(async (message) => {
       return this._upsertMessage(message).then(() => message)
     })
 

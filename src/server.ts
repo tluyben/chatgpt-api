@@ -3,7 +3,7 @@ import delay from 'delay'
 import express from 'express'
 import { oraPromise } from 'ora'
 
-import { ChatGPTAPIBrowser } from './chatgpt-api-browser'
+import { ChatGPTAPI } from './chatgpt-api'
 import { Dalle } from './dalle-node'
 
 dotenv.config()
@@ -12,11 +12,9 @@ dotenv.config()
  * Example CLI for testing functionality.
  */
 async function main() {
-  const api = new ChatGPTAPIBrowser({
-    email: process.env.OPENAI_EMAIL,
-    password: process.env.OPENAI_PASSWORD
+  const api = new ChatGPTAPI({
+    apiKey: process.env.OPENAI_API_KEY
   })
-  await api.initSession()
 
   const app = express()
   let port = 3001
@@ -33,11 +31,11 @@ async function main() {
     const message = req.query.message as string
     response = await api.sendMessage(message, {
       conversationId: response?.conversationId,
-      parentMessageId: response?.messageId
+      parentMessageId: response?.id
     })
 
-    console.log('responses', response.response)
-    res.send([response.response])
+    console.log('responses', response)
+    res.send([response.text])
   })
 
   // see; https://www.npmjs.com/package/dalle-node how to get the sess key
@@ -67,5 +65,5 @@ async function main() {
 }
 
 main().then((res) => {
-  console.log(res)
+  //console.log(res)
 })
