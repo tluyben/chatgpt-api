@@ -1,15 +1,14 @@
 import dotenv from 'dotenv-safe'
-import { oraPromise } from 'ora'
 
 import { ChatGPTAPI } from '../src'
 
 dotenv.config()
 
 /**
- * Demo CLI for testing basic functionality.
+ * Demo CLI for testing the `onProgress` streaming support.
  *
  * ```
- * npx tsx demos/demo.ts
+ * npx tsx demos/demo-on-progress.ts
  * ```
  */
 async function main() {
@@ -18,10 +17,13 @@ async function main() {
   const prompt =
     'Write a python version of bubble sort. Do not include example usage.'
 
-  const res = await oraPromise(api.sendMessage(prompt), {
-    text: prompt
+  console.log(prompt)
+  const res = await api.sendMessage(prompt, {
+    onProgress: (partialResponse) => {
+      console.log(partialResponse.text)
+    }
   })
-  console.log(res)
+  console.log(res.text)
 }
 
 main().catch((err) => {

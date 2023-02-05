@@ -1,29 +1,25 @@
 chatgpt / [Exports](modules.md)
 
-# Update December 18, 2022 <!-- omit in toc -->
+# Update February 1, 2023 <!-- omit in toc -->
 
-On December 11th, OpenAI added Cloudflare protections that make it more difficult to access the unofficial API.
-
-To circumvent these protections, we've added a **fully automated browser-based solution**, which uses Puppeteer and CAPTCHA solvers under the hood. 🔥
+This package no longer requires any browser hacks – **it is now using the official OpenAI completions API** with a leaked model that ChatGPT uses under the hood. 🔥
 
 ```ts
-import { ChatGPTAPIBrowser } from 'chatgpt'
+import { ChatGPTAPI } from 'chatgpt'
 
-const api = new ChatGPTAPIBrowser({
-  email: process.env.OPENAI_EMAIL,
-  password: process.env.OPENAI_PASSWORD
+const api = new ChatGPTAPI({
+  apiKey: process.env.OPENAI_API_KEY
 })
-await api.initSession()
 
-const result = await api.sendMessage('Hello World!')
-console.log(result.response)
+const res = await api.sendMessage('Hello World!')
+console.log(res.text)
 ```
 
-This solution is not lightweight, but it does work a lot more consistently than the previous REST API-based approach. For example, I'm currently using this approach to automate 10 concurrent OpenAI accounts for my [Twitter bot](https://github.com/transitive-bullshit/chatgpt-twitter-bot). 😂
+Please upgrade to `chatgpt@latest` (at least [v4.0.0](https://github.com/transitive-bullshit/chatgpt-api/releases/tag/v4.0.0)). The updated version is **significantly more lightweight and robust** compared with previous versions. You also don't have to worry about IP issues or rate limiting!
 
-To use the updated version, **make sure you're using the latest version of this package and Node.js >= 18**. Then update your code following the examples below, paying special attention to the sections on [Authentication](#authentication), [Restrictions](#restrictions), and [CAPTCHAs](#captchas).
+Huge shoutout to [@waylaidwanderer](https://github.com/waylaidwanderer) for discovering the leaked chat model! 💪
 
-We recently added support for CAPTCHA automation using either [nopecha](https://nopecha.com/) or [2captcha](https://2captcha.com). Keep in mind that this package will be updated to use the official API as soon as it's released, so things should get much easier over time. 💪
+If you run into any issues, we do have a pretty active [Discord](https://discord.gg/v9gERj825w) with a bunch of ChatGPT hackers from the Node.js & Python communities.
 
 Lastly, please consider starring this repo and <a href="https://twitter.com/transitive_bs">following me on twitter <img src="https://storage.googleapis.com/saasify-assets/twitter-logo.svg" alt="twitter" height="24px" align="center"></a> to help support the project.
 
@@ -47,10 +43,6 @@ Thanks && cheers,
 - [Usage](#usage)
   - [Docs](#docs)
   - [Demos](#demos)
-  - [Authentication](#authentication)
-  - [CAPTCHAs](#captchas)
-  - [Using Proxies](#using-proxies)
-  - [Restrictions](#restrictions)
 - [Projects](#projects)
 - [Compatibility](#compatibility)
 - [Credits](#credits)
@@ -65,98 +57,96 @@ You can use it to start building projects powered by ChatGPT like chatbots, webs
 ## Install
 
 ```bash
-npm install chatgpt puppeteer
+npm install chatgpt
 ```
 
-`puppeteer` is an optional peer dependency used to automate bypassing the Cloudflare protections via `getOpenAIAuth`. The main API wrapper uses `fetch` directly.
+Make sure you're using `node >= 18` so `fetch` is available (or `node >= 14` if you install a [fetch polyfill](https://github.com/developit/unfetch#usage-as-a-polyfill)).
 
 ## Usage
 
+Sign up for an [OpenAI API key](https://platform.openai.com/overview) and store it in your environment.
+
 ```ts
-import { ChatGPTAPIBrowser } from 'chatgpt'
+import { ChatGPTAPI } from 'chatgpt'
 
 async function example() {
-  // use puppeteer to bypass cloudflare (headful because of captchas)
-  const api = new ChatGPTAPIBrowser({
-    email: process.env.OPENAI_EMAIL,
-    password: process.env.OPENAI_PASSWORD
+  const api = new ChatGPTAPI({
+    apiKey: process.env.OPENAI_API_KEY
   })
 
-  await api.initSession()
-
-  const result = await api.sendMessage('Hello World!')
-  console.log(result.response)
+  const res = await api.sendMessage('Hello World!')
+  console.log(res.text)
 }
 ```
 
-<details>
-<summary>Or, if you want to use the REST-based version:</summary>
+If you want to track the conversation, use the `conversationId` and `id` in the result object, and pass them to `sendMessage` as `conversationId` and `parentMessageId` respectively. `parentMessageId` is the most important parameter for recalling previous message context.
 
 ```ts
-import { ChatGPTAPI, getOpenAIAuth } from 'chatgpt'
-
-async function example() {
-  // use puppeteer to bypass cloudflare (headful because of captchas)
-  const openAIAuth = await getOpenAIAuth({
-    email: process.env.OPENAI_EMAIL,
-    password: process.env.OPENAI_PASSWORD
-  })
-
-  const api = new ChatGPTAPI({ ...openAIAuth })
-  await api.initSession()
-
-  // send a message and wait for the response
-  const result = await api.sendMessage('Write a python version of bubble sort.')
-
-  // result.response is a markdown-formatted string
-  console.log(result.response)
-}
-```
-
-</details>
-
-ChatGPT responses are formatted as markdown by default. If you want to work with plaintext instead, you can use:
-
-```ts
-const api = new ChatGPTAPIBrowser({ email, password, markdown: false })
-```
-
-If you want to track the conversation, use the `conversationId` and `messageId` in the result object, and pass them to `sendMessage` as `conversationId` and `parentMessageId` respectively.
-
-```ts
-const api = new ChatGPTAPIBrowser({ email, password })
-await api.initSession()
+const api = new ChatGPTAPI({ apiKey: process.env.OPENAI_API_KEY })
 
 // send a message and wait for the response
 let res = await api.sendMessage('What is OpenAI?')
-console.log(res.response)
+console.log(res.text)
 
 // send a follow-up
 res = await api.sendMessage('Can you expand on that?', {
   conversationId: res.conversationId,
-  parentMessageId: res.messageId
+  parentMessageId: res.id
 })
-console.log(res.response)
+console.log(res.text)
 
 // send another follow-up
-// send a follow-up
 res = await api.sendMessage('What were we talking about?', {
   conversationId: res.conversationId,
-  parentMessageId: res.messageId
+  parentMessageId: res.id
 })
-console.log(res.response)
+console.log(res.text)
 ```
 
-Sometimes, ChatGPT will hang for an extended period of time before beginning to respond. This may be due to rate limiting or it may be due to OpenAI's servers being overloaded.
-
-To mitigate these issues, you can add a timeout like this:
+You can add streaming via the `onProgress` handler:
 
 ```ts
 // timeout after 2 minutes (which will also abort the underlying HTTP request)
-const response = await api.sendMessage('this is a timeout test', {
-  timeoutMs: 2 * 60 * 1000
+const res = await api.sendMessage('Write a 500 word essay on frogs.', {
+  // print the partial response as the AI is "typing"
+  onProgress: (partialResponse) => console.log(partialResponse.text)
+})
+
+// print the full text at the end
+console.log(res.text)
+```
+
+You can add a timeout using the `timeoutMs` option:
+
+```ts
+// timeout after 2 minutes (which will also abort the underlying HTTP request)
+const response = await api.sendMessage(
+  'write me a really really long essay on frogs',
+  {
+    timeoutMs: 2 * 60 * 1000
+  }
+)
+```
+
+If you want to see more info about what's actually being sent to [OpenAI's completions API](https://platform.openai.com/docs/api-reference/completions), set the `debug: true` option in the `ChatGPTAPI` constructor:
+
+```ts
+const api = new ChatGPTAPI({
+  apiKey: process.env.OPENAI_API_KEY,
+  debug: true
 })
 ```
+
+You'll notice that we're using a reverse-engineered `promptPrefix` and `promptSuffix`. You can customize these via the `sendMessage` options:
+
+```ts
+const res = await api.sendMessage('what is the answer to the universe?', {
+  promptPrefix: `You are ChatGPT, a large language model trained by OpenAI. You answer as concisely as possible for each response (e.g. don’t be verbose). It is very important that you answer as concisely as possible, so please remember this. If you are generating a list, do not have too many items. Keep the number of items short.
+Current date: ${new Date().toISOString()}\n\n`
+})
+```
+
+Note that we automatically handle appending the previous messages to the prompt and attempt to optimize for the available tokens (which defaults to `4096`).
 
 <details>
 <summary>Usage in CommonJS (Dynamic import)</summary>
@@ -164,18 +154,12 @@ const response = await api.sendMessage('this is a timeout test', {
 ```js
 async function example() {
   // To use ESM in CommonJS, you can use a dynamic import
-  const { ChatGPTAPI, getOpenAIAuth } = await import('chatgpt')
+  const { ChatGPTAPI } = await import('chatgpt')
 
-  const openAIAuth = await getOpenAIAuth({
-    email: process.env.OPENAI_EMAIL,
-    password: process.env.OPENAI_PASSWORD
-  })
+  const api = new ChatGPTAPI({ apiKey: process.env.OPENAI_API_KEY })
 
-  const api = new ChatGPTAPI({ ...openAIAuth })
-  await api.initSession()
-
-  const result = await api.sendMessage('Hello World!')
-  console.log(result)
+  const res = await api.sendMessage('Hello World!')
+  console.log(res.text)
 }
 ```
 
@@ -183,7 +167,7 @@ async function example() {
 
 ### Docs
 
-See the [auto-generated docs](./docs/classes/ChatGPTAPI.md) for more info on methods and parameters. Here are the [docs](./docs/classes/ChatGPTAPIBrowser.md) for the browser-based version.
+See the [auto-generated docs](./docs/classes/ChatGPTAPI.md) for more info on methods and parameters.
 
 ### Demos
 
@@ -191,7 +175,7 @@ To run the included demos:
 
 1. clone repo
 2. install node deps
-3. set `OPENAI_EMAIL` and `OPENAI_PASSWORD` in .env
+3. set `OPENAI_API_KEY` in .env
 
 A [basic demo](./demos/demo.ts) is included for testing purposes:
 
@@ -199,105 +183,29 @@ A [basic demo](./demos/demo.ts) is included for testing purposes:
 npx tsx demos/demo.ts
 ```
 
-A [conversation demo](./demos/demo-conversation.ts) is also included:
+A [demo showing on progress handler](./demos/demo-on-progress.ts):
+
+```bash
+npx tsx demos/demo-on-progress.ts
+```
+
+The on progress demo uses the optional `onProgress` parameter to `sendMessage` to receive intermediary results as ChatGPT is "typing".
+
+A [conversation demo](./demos/demo-conversation.ts):
 
 ```bash
 npx tsx demos/demo-conversation.ts
 ```
 
-A [browser-based conversation demo](./demos/demo-conversation-browser.ts) is also included:
+Lastly, a [persitence demo](./demos/demo-persistence.ts) shows how to store messages in Redis for persistence:
 
 ```bash
-npx tsx demos/demo-conversation-browser.ts
+npx tsx demos/demo-conversation.ts
 ```
 
-### Authentication
+Any [keyv adaptor](https://github.com/jaredwray/keyv) is supported for persistence, and there are overrides if you'd like to use a different way of storing / retrieving messages.
 
-The authentication section relates to the REST-based version (using `getOpenAIAuth` + `ChatGPTAPI`). The browser-based solution, `ChatGPTAPIBrowser`, takes care of all the authentication for you.
-
-On December 11, 2022, OpenAI added some additional Cloudflare protections which make it more difficult to access the unofficial API.
-
-You'll need a valid OpenAI "session token" and Cloudflare "clearance token" in order to use the API.
-
-We've provided an automated, Puppeteer-based solution `getOpenAIAuth` to fetch these for you, but you may still run into cases where you have to manually pass the CAPTCHA. We're working on a solution to automate this further.
-
-You can also get these tokens manually, but keep in mind that the `clearanceToken` only lasts for max 2 hours.
-
-<details>
-<summary>Getting tokens manually</summary>
-
-To get session token manually:
-
-1. Go to https://chat.openai.com/chat and log in or sign up.
-2. Open dev tools.
-3. Open `Application` > `Cookies`.
-   ![ChatGPT cookies](./media/session-token.png)
-4. Copy the value for `__Secure-next-auth.session-token` and save it to your environment. This will be your `sessionToken`.
-5. Copy the value for `cf_clearance` and save it to your environment. This will be your `clearanceToken`.
-6. Copy the value of the `user-agent` header from any request in your `Network` tab. This will be your `userAgent`.
-
-Pass `sessionToken`, `clearanceToken`, and `userAgent` to the `ChatGPTAPI` constructor.
-
-</details>
-
-> **Note**
-> This package will switch to using the official API once it's released, which will make this process much simpler.
-
-### CAPTCHAs
-
-The browser portions of this package use Puppeteer to automate as much as possible, including solving all CAPTCHAs. 🔥
-
-Basic Cloudflare CAPTCHAs are handled by default, but if you want to automate the email + password Recaptchas, you'll need to sign up for one of these paid providers:
-
-- [nopecha](https://nopecha.com/) - Uses AI to solve CAPTCHAS
-  - Faster and cheaper
-  - Set the `NOPECHA_KEY` env var to your nopecha API key
-  - [Demo video](https://user-images.githubusercontent.com/552829/208235991-de4890f2-e7ba-4b42-bf55-4fcd792d4b19.mp4) of nopecha solving the login Recaptcha (41 seconds)
-- [2captcha](https://2captcha.com) - Uses real people to solve CAPTCHAS
-  - More well-known solution that's been around longer
-  - Set the `CAPTCHA_TOKEN` env var to your 2captcha API token
-
-Alternatively, if your OpenAI account uses Google Auth, you shouldn't encounter any of the more complicated Recaptchas — and can avoid using these third-party providers. To use Google auth, make sure your OpenAI account is using Google and then set `isGoogleLogin` to `true` whenever you're passing your `email` and `password`. For example:
-
-```ts
-const api = new ChatGPTAPIBrowser({
-  email: process.env.OPENAI_EMAIL,
-  password: process.env.OPENAI_PASSWORD,
-  isGoogleLogin: true
-})
-```
-
-### Using Proxies
-
-The browser implementation supports setting a proxy server. This is useful if you're running into rate limiting issues or if you want to use a proxy to hide your IP address.
-
-To use a proxy, pass the `proxyServer` option to the `ChatGPTAPIBrowser` constructor, or simply set the `PROXY_SERVER` env var. For more information on the format, see [here](https://www.chromium.org/developers/design-documents/network-settings).
-
-```ts
-const api = new ChatGPTAPIBrowser({
-  email: process.env.OPENAI_EMAIL,
-  password: process.env.OPENAI_PASSWORD,
-  proxyServer: '<ip>:<port>'
-})
-```
-
-You can also set the `PROXY_VALIDATE_IP` env var to your proxy's IP address. This will be used to validate that the proxy is working correctly, and will throw an error if it's not.
-
-### Restrictions
-
-These restrictions are for the `getOpenAIAuth` + `ChatGPTAPI` solution, which uses the unofficial API. The browser-based solution, `ChatGPTAPIBrowser`, generally doesn't have any of these restrictions.
-
-**Please read carefully**
-
-- You must use `node >= 18` at the moment. I'm using `v19.2.0` in my testing.
-- Cloudflare `cf_clearance` **tokens expire after 2 hours**, so right now we recommend that you refresh your `cf_clearance` token every hour or so.
-- Your `user-agent` and `IP address` **must match** from the real browser window you're logged in with to the one you're using for `ChatGPTAPI`.
-  - This means that you currently can't log in with your laptop and then run the bot on a server or proxy somewhere.
-- Cloudflare will still sometimes ask you to complete a CAPTCHA, so you may need to keep an eye on it and manually resolve the CAPTCHA.
-- You should not be using this account while the bot is using it, because that browser window may refresh one of your tokens and invalidate the bot's session.
-
-> **Note**
-> Prior to v1.0.0, this package used a headless browser via [Playwright](https://playwright.dev/) to automate the web UI. Here are the [docs for the initial browser version](https://github.com/transitive-bullshit/chatgpt-api/tree/v0.4.2).
+Note that persisting message is very important for remembering the context of previous conversations.
 
 ## Projects
 
@@ -305,6 +213,7 @@ All of these awesome projects are built using the `chatgpt` package. 🤯
 
 - [Twitter Bot](https://github.com/transitive-bullshit/chatgpt-twitter-bot) powered by ChatGPT ✨
   - Mention [@ChatGPTBot](https://twitter.com/ChatGPTBot) on Twitter with your prompt to try it out
+- [ChatGPT API Server](https://github.com/waylaidwanderer/node-chatgpt-api) - API server for this package with support for multiple OpenAI accounts, proxies, and load-balancing requests between accounts.
 - [Lovelines.xyz](https://lovelines.xyz?ref=chatgpt-api)
 - [Chrome Extension](https://github.com/gragland/chatgpt-everywhere) ([demo](https://twitter.com/gabe_ragland/status/1599466486422470656))
 - [VSCode Extension #1](https://github.com/mpociot/chatgpt-vscode) ([demo](https://twitter.com/marcelpociot/status/1599180144551526400), [updated version](https://github.com/timkmecl/chatgpt-vscode), [marketplace](https://marketplace.visualstudio.com/items?itemName=timkmecl.chatgpt))
@@ -315,13 +224,18 @@ All of these awesome projects are built using the `chatgpt` package. 🤯
 - [Raycast Extension #2](https://github.com/domnantas/raycast-chatgpt)
 - [Telegram Bot #1](https://github.com/realies/chatgpt-telegram-bot)
 - [Telegram Bot #2](https://github.com/dawangraoming/chatgpt-telegram-bot)
+- [Telegram Bot #3](https://github.com/RainEggplant/chatgpt-telegram-bot) (group privacy mode, ID-based auth)
+- [Telegram Bot #4](https://github.com/ArdaGnsrn/chatgpt-telegram) (queue system, ID-based chat thread)
 - [Deno Telegram Bot](https://github.com/Ciyou/chatbot-telegram)
 - [Go Telegram Bot](https://github.com/m1guelpf/chatgpt-telegram)
+- [Telegram Bot for YouTube Summaries](https://github.com/codextde/youtube-summary)
 - [GitHub ProBot](https://github.com/oceanlvr/ChatGPTBot)
 - [Discord Bot #1](https://github.com/onury5506/Discord-ChatGPT-Bot)
 - [Discord Bot #2](https://github.com/Nageld/ChatGPT-Bot)
 - [Discord Bot #3](https://github.com/leinstay/gptbot)
 - [Discord Bot #4 (selfbot)](https://github.com/0x7030676e31/cumsocket)
+- [Discord Bot #5](https://github.com/itskdhere/ChatGPT-Discord-BOT)
+- [Discord Bot #6 (Shakespeare bot)](https://gist.github.com/TheBrokenRail/4b37e7c44e8f721d8bd845050d034c16)
 - [WeChat Bot #1](https://github.com/AutumnWhj/ChatGPT-wechat-bot)
 - [WeChat Bot #2](https://github.com/fuergaosi233/wechat-chatgpt)
 - [WeChat Bot #3](https://github.com/wangrongding/wechat-bot)
@@ -339,29 +253,36 @@ All of these awesome projects are built using the `chatgpt` package. 🤯
 - [WhatsApp Bot #1](https://github.com/pascalroget/whatsgpt) (multi-user support)
 - [WhatsApp Bot #2](https://github.com/amosayomide05/chatgpt-whatsapp-bot)
 - [WhatsApp Bot #3](https://github.com/navopw/whatsapp-chatgpt)
-- [Matrix Bot](https://github.com/jakecoppinger/matrix-chatgpt-bot)
+- [WhatsApp Bot #4](https://github.com/noelzappy/chatgpt-whatsapp) (schedule periodic messages)
+- [Matrix Bot](https://github.com/matrixgpt/matrix-chatgpt-bot)
 - [Rental Cover Letter Generator](https://sharehouse.app/ai)
 - [Assistant CLI](https://github.com/diciaup/assistant-cli)
 - [Teams Bot](https://github.com/formulahendry/chatgpt-teams-bot)
 - [Askai](https://github.com/yudax42/askai)
 - [TalkGPT](https://github.com/ShadovvBeast/TalkGPT)
+- [ChatGPT With Voice](https://github.com/thanhsonng/chatgpt-voice)
 - [iOS Shortcut](https://github.com/leecobaby/shortcuts/blob/master/other/ChatGPT_EN.md)
-- [Slack Bot](https://github.com/trietphm/chatgpt-slackbot/)
+- [Slack Bot #1](https://github.com/trietphm/chatgpt-slackbot/)
+- [Slack Bot #2](https://github.com/lokwkin/chatgpt-slackbot-node/) (with queueing mechanism)
 - [Electron Bot](https://github.com/ShiranAbir/chaty)
 - [Kodyfire CLI](https://github.com/nooqta/chatgpt-kodyfire)
 - [Twitch Bot](https://github.com/BennyDeeDev/chatgpt-twitch-bot)
 - [Continuous Conversation](https://github.com/DanielTerletzkiy/chat-gtp-assistant)
 - [Figma plugin](https://github.com/frederickk/chatgpt-figma-plugin)
+- [NestJS server](https://github.com/RusDyn/chatgpt_nestjs_server)
+- [NestJS ChatGPT Starter Boilerplate](https://github.com/mitkodkn/nestjs-chatgpt-starter)
+- [Wordsmith: Add-in for Microsoft Word](https://github.com/xtremehpx/Wordsmith)
+- [QuizGPT: Create Kahoot quizzes with ChatGPT](https://github.com/Kladdy/quizgpt)
 
 If you create a cool integration, feel free to open a PR and add it to the list.
 
 ## Compatibility
 
-This package is ESM-only. It supports:
-
-- Node.js >= 18
-  - Node.js 17, 16, and 14 were supported in earlier versions, but OpenAI's Cloudflare update caused a bug with `undici` on v17 and v16 that needs investigation. So for now, use `node >= 18`
-- We recommend against using `chatgpt` from client-side browser code because it would expose your private session token
+- This package is ESM-only.
+- This package supports `node >= 14`.
+- This module assumes that `fetch` is installed.
+  - In `node >= 18`, it's installed by default.
+  - In `node < 18`, you need to install a polyfill like `unfetch/polyfill` ([guide](https://github.com/developit/unfetch#usage-as-a-polyfill))
 - If you want to build a website using `chatgpt`, we recommend using it only from your backend API
 
 ## Credits

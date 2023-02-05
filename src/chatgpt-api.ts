@@ -1,193 +1,159 @@
-import ExpiryMap from 'expiry-map'
+import { encode as gptEncode } from 'gpt-3-encoder'
+import Keyv from 'keyv'
 import pTimeout from 'p-timeout'
+import QuickLRU from 'quick-lru'
 import { v4 as uuidv4 } from 'uuid'
 
 import * as types from './types'
-import { AChatGPTAPI } from './abstract-chatgpt-api'
 import { fetch } from './fetch'
 import { fetchSSE } from './fetch-sse'
-import { markdownToText } from './utils'
 
-const KEY_ACCESS_TOKEN = 'accessToken'
-const USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+// NOTE: this is not a public model, but it was leaked by the ChatGPT webapp.
+// const CHATGPT_MODEL = 'text-chat-davinci-002-20230126'
+const CHATGPT_MODEL = 'text-chat-davinci-002-20221122'
 
-export class ChatGPTAPI extends AChatGPTAPI {
-  protected _sessionToken: string
-  protected _clearanceToken: string
-  protected _markdown: boolean
-  protected _debug: boolean
+const USER_LABEL_DEFAULT = 'User'
+const ASSISTANT_LABEL_DEFAULT = 'ChatGPT'
+
+export class ChatGPTAPI {
+  protected _apiKey: string
   protected _apiBaseUrl: string
-  protected _backendApiBaseUrl: string
-  protected _userAgent: string
-  protected _headers: Record<string, string>
-  protected _user: types.User | null = null
+  protected _debug: boolean
 
-  // Stores access tokens for `accessTokenTTL` milliseconds before needing to refresh
-  protected _accessTokenCache: ExpiryMap<string, string>
+  protected _completionParams: Omit<types.openai.CompletionParams, 'prompt'>
+  protected _maxModelTokens: number
+  protected _maxResponseTokens: number
+  protected _userLabel: string
+  protected _assistantLabel: string
+
+  protected _getMessageById: types.GetMessageByIdFunction
+  protected _upsertMessage: types.UpsertMessageFunction
+
+  protected _messageStore: Keyv<types.ChatMessage>
 
   /**
-   * Creates a new client wrapper around the unofficial ChatGPT REST API.
+   * Creates a new client wrapper around OpenAI's completion API using the
+   * unofficial ChatGPT model.
    *
-   * Note that your IP address and `userAgent` must match the same values that you used
-   * to obtain your `clearanceToken`.
-   *
-   * @param opts.sessionToken = **Required** OpenAI session token which can be found in a valid session's cookies (see readme for instructions)
-   * @param opts.clearanceToken = **Required** Cloudflare `cf_clearance` cookie value (see readme for instructions)
-   * @param apiBaseUrl - Optional override; the base URL for ChatGPT webapp's API (`/api`)
-   * @param backendApiBaseUrl - Optional override; the base URL for the ChatGPT backend API (`/backend-api`)
-   * @param userAgent - Optional override; the `user-agent` header to use with ChatGPT requests
-   * @param accessTokenTTL - Optional override; how long in milliseconds access tokens should last before being forcefully refreshed
-   * @param accessToken - Optional default access token if you already have a valid one generated
-   * @param heaaders - Optional additional HTTP headers to be added to each `fetch` request
-   * @param debug - Optional enables logging debugging into to stdout
+   * @param apiKey - OpenAI API key (required).
+   * @param apiBaseUrl - Optional override for the OpenAI API base URL.
+   * @param debug - Optional enables logging debugging info to stdout.
+   * @param completionParams - Param overrides to send to the [OpenAI completion API](https://platform.openai.com/docs/api-reference/completions/create). Options like `temperature` and `presence_penalty` can be tweaked to change the personality of the assistant.
+   * @param maxModelTokens - Optional override for the maximum number of tokens allowed by the model's context. Defaults to 4096 for the `text-chat-davinci-002-20230126` model.
+   * @param maxResponseTokens - Optional override for the minimum number of tokens allowed for the model's response. Defaults to 1000 for the `text-chat-davinci-002-20230126` model.
+   * @param messageStore - Optional [Keyv](https://github.com/jaredwray/keyv) store to persist chat messages to. If not provided, messages will be lost when the process exits.
+   * @param getMessageById - Optional function to retrieve a message by its ID. If not provided, the default implementation will be used (using an in-memory `messageStore`).
+   * @param upsertMessage - Optional function to insert or update a message. If not provided, the default implementation will be used (using an in-memory `messageStore`).
    */
   constructor(opts: {
-    sessionToken: string
+    apiKey: string
 
-    clearanceToken: string
-
-    /** @defaultValue `true` **/
-    markdown?: boolean
-
-    /** @defaultValue `'https://chat.openai.com/api'` **/
+    /** @defaultValue `'https://api.openai.com'` **/
     apiBaseUrl?: string
-
-    /** @defaultValue `'https://chat.openai.com/backend-api'` **/
-    backendApiBaseUrl?: string
-
-    /** @defaultValue `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'` **/
-    userAgent?: string
-
-    /** @defaultValue 1 hour **/
-    accessTokenTTL?: number
-
-    /** @defaultValue `undefined` **/
-    accessToken?: string
-
-    /** @defaultValue `undefined` **/
-    headers?: Record<string, string>
 
     /** @defaultValue `false` **/
     debug?: boolean
-  }) {
-    super()
 
+    completionParams?: Partial<types.openai.CompletionParams>
+
+    /** @defaultValue `4096` **/
+    maxModelTokens?: number
+
+    /** @defaultValue `1000` **/
+    maxResponseTokens?: number
+
+    /** @defaultValue `'User'` **/
+    userLabel?: string
+
+    /** @defaultValue `'ChatGPT'` **/
+    assistantLabel?: string
+
+    messageStore?: Keyv
+    getMessageById?: types.GetMessageByIdFunction
+    upsertMessage?: types.UpsertMessageFunction
+  }) {
     const {
-      sessionToken,
-      clearanceToken,
-      markdown = true,
-      apiBaseUrl = 'https://chat.openai.com/api',
-      backendApiBaseUrl = 'https://chat.openai.com/backend-api',
-      userAgent = USER_AGENT,
-      accessTokenTTL = 60 * 60000, // 1 hour
-      accessToken,
-      headers,
-      debug = false
+      apiKey,
+      apiBaseUrl = 'https://api.openai.com',
+      debug = false,
+      messageStore,
+      completionParams,
+      maxModelTokens = 4096,
+      maxResponseTokens = 1000,
+      userLabel = USER_LABEL_DEFAULT,
+      assistantLabel = ASSISTANT_LABEL_DEFAULT,
+      getMessageById = this._defaultGetMessageById,
+      upsertMessage = this._defaultUpsertMessage
     } = opts
 
-    this._sessionToken = sessionToken
-    this._clearanceToken = clearanceToken
-    this._markdown = !!markdown
-    this._debug = !!debug
+    this._apiKey = apiKey
     this._apiBaseUrl = apiBaseUrl
-    this._backendApiBaseUrl = backendApiBaseUrl
-    this._userAgent = userAgent
-    this._headers = {
-      'user-agent': this._userAgent,
-      'x-openai-assistant-app-id': '',
-      'accept-language': 'en-US,en;q=0.9',
-      'accept-encoding': 'gzip, deflate, br',
-      origin: 'https://chat.openai.com',
-      referer: 'https://chat.openai.com/chat',
-      'sec-ch-ua':
-        '"Not?A_Brand";v="8", "Chromium";v="108", "Google Chrome";v="108"',
-      'sec-ch-ua-platform': '"macOS"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      ...headers
+    this._debug = !!debug
+
+    this._completionParams = {
+      model: CHATGPT_MODEL,
+      temperature: 0.7,
+      presence_penalty: 0.6,
+      stop: ['<|im_end|>'],
+      ...completionParams
+    }
+    this._maxModelTokens = maxModelTokens
+    this._maxResponseTokens = maxResponseTokens
+    this._userLabel = userLabel
+    this._assistantLabel = assistantLabel
+
+    this._getMessageById = getMessageById
+    this._upsertMessage = upsertMessage
+
+    if (messageStore) {
+      this._messageStore = messageStore
+    } else {
+      this._messageStore = new Keyv<types.ChatMessage, any>({
+        store: new QuickLRU<string, types.ChatMessage>({ maxSize: 10000 })
+      })
     }
 
-    this._accessTokenCache = new ExpiryMap<string, string>(accessTokenTTL)
-    if (accessToken) {
-      this._accessTokenCache.set(KEY_ACCESS_TOKEN, accessToken)
+    if (!this._apiKey) {
+      throw new Error('ChatGPT invalid apiKey')
     }
-
-    if (!this._sessionToken) {
-      const error = new types.ChatGPTError('ChatGPT invalid session token')
-      error.statusCode = 401
-      throw error
-    }
-
-    if (!this._clearanceToken) {
-      const error = new types.ChatGPTError('ChatGPT invalid clearance token')
-      error.statusCode = 401
-      throw error
-    }
-  }
-
-  /**
-   * Gets the currently signed-in user, if authenticated, `null` otherwise.
-   */
-  get user() {
-    return this._user
-  }
-
-  /** Gets the current session token. */
-  get sessionToken() {
-    return this._sessionToken
-  }
-
-  /** Gets the current Cloudflare clearance token (`cf_clearance` cookie value). */
-  get clearanceToken() {
-    return this._clearanceToken
-  }
-
-  /** Gets the current user agent. */
-  get userAgent() {
-    return this._userAgent
-  }
-
-  /**
-   * Refreshes the client's access token which will succeed only if the session
-   * is valid.
-   */
-  override async initSession() {
-    await this.refreshSession()
   }
 
   /**
    * Sends a message to ChatGPT, waits for the response to resolve, and returns
    * the response.
    *
+   * If you want your response to have historical context, you must provide a valid `parentMessageId`.
+   *
    * If you want to receive a stream of partial responses, use `opts.onProgress`.
    * If you want to receive the full response, including message and conversation IDs,
    * you can use `opts.onConversationResponse` or use the `ChatGPTAPI.getConversation`
    * helper.
    *
+   * Set `debug: true` in the `ChatGPTAPI` constructor to log more info on the full prompt sent to the OpenAI completions API. You can override the `promptPrefix` and `promptSuffix` in `opts` to customize the prompt.
+   *
    * @param message - The prompt message to send
-   * @param opts.conversationId - Optional ID of a conversation to continue
-   * @param opts.parentMessageId - Optional ID of the previous message in the conversation
+   * @param opts.conversationId - Optional ID of a conversation to continue (defaults to a random UUID)
+   * @param opts.parentMessageId - Optional ID of the previous message in the conversation (defaults to `undefined`)
    * @param opts.messageId - Optional ID of the message to send (defaults to a random UUID)
-   * @param opts.action - Optional ChatGPT `action` (either `next` or `variant`)
+   * @param opts.promptPrefix - Optional override for the prompt prefix to send to the OpenAI completions endpoint
+   * @param opts.promptSuffix - Optional override for the prompt suffix to send to the OpenAI completions endpoint
    * @param opts.timeoutMs - Optional timeout in milliseconds (defaults to no timeout)
    * @param opts.onProgress - Optional callback which will be invoked every time the partial response is updated
    * @param opts.abortSignal - Optional callback used to abort the underlying `fetch` call using an [AbortController](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
    *
    * @returns The response from ChatGPT
    */
-  override async sendMessage(
-    message: string,
+  async sendMessage(
+    text: string,
     opts: types.SendMessageOptions = {}
-  ): Promise<types.ChatResponse> {
+  ): Promise<types.ChatMessage> {
     const {
-      conversationId,
-      parentMessageId = uuidv4(),
+      conversationId = uuidv4(),
+      parentMessageId,
       messageId = uuidv4(),
-      action = 'next',
       timeoutMs,
-      onProgress
+      onProgress,
+      stream = onProgress ? true : false
     } = opts
 
     let { abortSignal } = opts
@@ -198,109 +164,108 @@ export class ChatGPTAPI extends AChatGPTAPI {
       abortSignal = abortController.signal
     }
 
-    const accessToken = await this.refreshSession()
-
-    const body: types.ConversationJSONBody = {
-      action,
-      messages: [
-        {
-          id: messageId,
-          role: 'user',
-          content: {
-            content_type: 'text',
-            parts: [message]
-          }
-        }
-      ],
-      model: 'text-davinci-002-render',
-      parent_message_id: parentMessageId
-    }
-
-    if (conversationId) {
-      body.conversation_id = conversationId
-    }
-
-    const result: types.ChatResponse = {
+    const message: types.ChatMessage = {
+      role: 'user',
+      id: messageId,
+      parentMessageId,
       conversationId,
-      messageId,
-      response: ''
+      text
+    }
+    await this._upsertMessage(message)
+
+    const { prompt, maxTokens } = await this._buildPrompt(text, opts)
+
+    const result: types.ChatMessage = {
+      role: 'assistant',
+      id: uuidv4(),
+      parentMessageId: messageId,
+      conversationId,
+      text: ''
     }
 
-    const responseP = new Promise<types.ChatResponse>((resolve, reject) => {
-      const url = `${this._backendApiBaseUrl}/conversation`
-      const headers = {
-        ...this._headers,
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'text/event-stream',
-        'Content-Type': 'application/json',
-        Cookie: `cf_clearance=${this._clearanceToken}`
-      }
+    const responseP = new Promise<types.ChatMessage>(
+      async (resolve, reject) => {
+        const url = `${this._apiBaseUrl}/v1/completions`
+        const headers = {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this._apiKey}`
+        }
+        const body = {
+          max_tokens: maxTokens,
+          ...this._completionParams,
+          prompt,
+          stream
+        }
 
-      if (this._debug) {
-        console.log('POST', url, { body, headers })
-      }
+        if (this._debug) {
+          const numTokens = await this._getTokenCount(body.prompt)
+          console.log(`sendMessage (${numTokens} tokens)`, body)
+        }
 
-      fetchSSE(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: abortSignal,
-        onMessage: (data: string) => {
-          if (data === '[DONE]') {
-            return resolve(result)
-          }
+        if (stream) {
+          fetchSSE(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            signal: abortSignal,
+            onMessage: (data: string) => {
+              if (data === '[DONE]') {
+                result.text = result.text.trim()
+                return resolve(result)
+              }
 
-          try {
-            const convoResponseEvent: types.ConversationResponseEvent =
-              JSON.parse(data)
-            if (convoResponseEvent.conversation_id) {
-              result.conversationId = convoResponseEvent.conversation_id
-            }
+              try {
+                const response: types.openai.CompletionResponse =
+                  JSON.parse(data)
 
-            if (convoResponseEvent.message?.id) {
-              result.messageId = convoResponseEvent.message.id
-            }
+                if (response?.id && response?.choices?.length) {
+                  result.id = response.id
+                  result.text += response.choices[0].text
 
-            const message = convoResponseEvent.message
-            // console.log('event', JSON.stringify(convoResponseEvent, null, 2))
-
-            if (message) {
-              let text = message?.content?.parts?.[0]
-
-              if (text) {
-                if (!this._markdown) {
-                  text = markdownToText(text)
+                  onProgress?.(result)
                 }
-
-                result.response = text
-
-                if (onProgress) {
-                  onProgress(result)
-                }
+              } catch (err) {
+                console.warn('ChatGPT stream SEE event unexpected error', err)
+                return reject(err)
               }
             }
+          })
+        } else {
+          try {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(body),
+              signal: abortSignal
+            })
+
+            if (!res.ok) {
+              const reason = await res.text()
+              const msg = `ChatGPT error ${
+                res.status || res.statusText
+              }: ${reason}`
+              const error = new types.ChatGPTError(msg, { cause: res })
+              error.statusCode = res.status
+              error.statusText = res.statusText
+              return reject(error)
+            }
+
+            const response: types.openai.CompletionResponse = await res.json()
+            if (this._debug) {
+              console.log(response)
+            }
+
+            result.id = response.id
+            result.text = response.choices[0].text.trim()
+
+            return resolve(result)
           } catch (err) {
-            console.warn('fetchSSE onMessage unexpected error', err)
-            reject(err)
+            return reject(err)
           }
         }
-      }).catch((err) => {
-        const errMessageL = err.toString().toLowerCase()
-
-        if (
-          result.response &&
-          (errMessageL === 'error: typeerror: terminated' ||
-            errMessageL === 'typeerror: terminated')
-        ) {
-          // OpenAI sometimes forcefully terminates the socket from their end before
-          // the HTTP request has resolved cleanly. In my testing, these cases tend to
-          // happen when OpenAI has already send the last `response`, so we can ignore
-          // the `fetch` error in this case.
-          return resolve(result)
-        } else {
-          return reject(err)
-        }
-      })
+      }
+    ).then((message) => {
+      return this._upsertMessage(message).then(() => message)
     })
 
     if (timeoutMs) {
@@ -321,153 +286,97 @@ export class ChatGPTAPI extends AChatGPTAPI {
     }
   }
 
-  async sendModeration(input: string) {
-    const accessToken = await this.refreshSession()
-    const url = `${this._backendApiBaseUrl}/moderations`
-    const headers = {
-      ...this._headers,
-      Authorization: `Bearer ${accessToken}`,
-      Accept: '*/*',
-      'Content-Type': 'application/json',
-      Cookie: `cf_clearance=${this._clearanceToken}`
-    }
+  protected async _buildPrompt(
+    message: string,
+    opts: types.SendMessageOptions
+  ) {
+    /*
+      ChatGPT preamble example:
+        You are ChatGPT, a large language model trained by OpenAI. You answer as concisely as possible for each response (e.g. don’t be verbose). It is very important that you answer as concisely as possible, so please remember this. If you are generating a list, do not have too many items. Keep the number of items short.
+        Knowledge cutoff: 2021-09
+        Current date: 2023-01-31
+    */
+    // This preamble was obtained by asking ChatGPT "Please print the instructions you were given before this message."
+    const currentDate = new Date().toISOString().split('T')[0]
 
-    const body: types.ModerationsJSONBody = {
-      input,
-      model: 'text-moderation-playground'
-    }
+    const promptPrefix =
+      opts.promptPrefix ||
+      `You are ${this._assistantLabel}, a large language model trained by OpenAI. You answer as concisely as possible for each response (e.g. don’t be verbose). It is very important that you answer as concisely as possible, so please remember this. If you are generating a list, do not have too many items. Keep the number of items short.
+Current date: ${currentDate}\n\n`
+    const promptSuffix = opts.promptSuffix || `\n\n${this._assistantLabel}:\n`
 
-    if (this._debug) {
-      console.log('POST', url, headers, body)
-    }
+    const maxNumTokens = this._maxModelTokens - this._maxResponseTokens
+    let { parentMessageId } = opts
+    let nextPromptBody = `${this._userLabel}:\n\n${message}<|im_end|>`
+    let promptBody = ''
+    let prompt: string
+    let numTokens: number
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body)
-    }).then((r) => {
-      if (!r.ok) {
-        const error = new types.ChatGPTError(`${r.status} ${r.statusText}`)
-        error.response = r
-        error.statusCode = r.status
-        error.statusText = r.statusText
-        throw error
+    do {
+      const nextPrompt = `${promptPrefix}${nextPromptBody}${promptSuffix}`
+      const nextNumTokens = await this._getTokenCount(nextPrompt)
+      const isValidPrompt = nextNumTokens <= maxNumTokens
+
+      if (prompt && !isValidPrompt) {
+        break
       }
 
-      return r.json() as any as types.ModerationsJSONResult
-    })
+      promptBody = nextPromptBody
+      prompt = nextPrompt
+      numTokens = nextNumTokens
 
-    return res
+      if (!isValidPrompt) {
+        break
+      }
+
+      if (!parentMessageId) {
+        break
+      }
+
+      const parentMessage = await this._getMessageById(parentMessageId)
+      if (!parentMessage) {
+        break
+      }
+
+      const parentMessageRole = parentMessage.role || 'user'
+      const parentMessageRoleDesc =
+        parentMessageRole === 'user' ? this._userLabel : this._assistantLabel
+
+      // TODO: differentiate between assistant and user messages
+      const parentMessageString = `${parentMessageRoleDesc}:\n\n${parentMessage.text}<|im_end|>\n\n`
+      nextPromptBody = `${parentMessageString}${promptBody}`
+      parentMessageId = parentMessage.parentMessageId
+    } while (true)
+
+    // Use up to 4096 tokens (prompt + response), but try to leave 1000 tokens
+    // for the response.
+    const maxTokens = Math.max(
+      1,
+      Math.min(this._maxModelTokens - numTokens, this._maxResponseTokens)
+    )
+
+    return { prompt, maxTokens }
   }
 
-  /**
-   * @returns `true` if the client has a valid acces token or `false` if refreshing
-   * the token fails.
-   */
-  override async getIsAuthenticated() {
-    try {
-      void (await this.refreshSession())
-      return true
-    } catch (err) {
-      return false
+  protected async _getTokenCount(text: string) {
+    if (this._completionParams.model === CHATGPT_MODEL) {
+      // With this model, "<|im_end|>" is 1 token, but tokenizers aren't aware of it yet.
+      // Replace it with "<|endoftext|>" (which it does know about) so that the tokenizer can count it as 1 token.
+      text = text.replace(/<\|im_end\|>/g, '<|endoftext|>')
     }
+
+    return gptEncode(text).length
   }
 
-  /**
-   * Attempts to refresh the current access token using the ChatGPT
-   * `sessionToken` cookie.
-   *
-   * Access tokens will be cached for up to `accessTokenTTL` milliseconds to
-   * prevent refreshing access tokens too frequently.
-   *
-   * @returns A valid access token
-   * @throws An error if refreshing the access token fails.
-   */
-  override async refreshSession(): Promise<string> {
-    const cachedAccessToken = this._accessTokenCache.get(KEY_ACCESS_TOKEN)
-    if (cachedAccessToken) {
-      return cachedAccessToken
-    }
-
-    let response: Response
-    try {
-      const url = `${this._apiBaseUrl}/auth/session`
-      const headers = {
-        ...this._headers,
-        cookie: `cf_clearance=${this._clearanceToken}; __Secure-next-auth.session-token=${this._sessionToken}`,
-        accept: '*/*'
-      }
-
-      if (this._debug) {
-        console.log('GET', url, headers)
-      }
-
-      const res = await fetch(url, {
-        headers
-      }).then((r) => {
-        response = r
-
-        if (!r.ok) {
-          const error = new types.ChatGPTError(`${r.status} ${r.statusText}`)
-          error.response = r
-          error.statusCode = r.status
-          error.statusText = r.statusText
-          throw error
-        }
-
-        return r.json() as any as types.SessionResult
-      })
-
-      const accessToken = res?.accessToken
-
-      if (!accessToken) {
-        const error = new types.ChatGPTError('Unauthorized')
-        error.response = response
-        error.statusCode = response?.status
-        error.statusText = response?.statusText
-        throw error
-      }
-
-      const appError = res?.error
-      if (appError) {
-        if (appError === 'RefreshAccessTokenError') {
-          const error = new types.ChatGPTError('session token may have expired')
-          error.response = response
-          error.statusCode = response?.status
-          error.statusText = response?.statusText
-          throw error
-        } else {
-          const error = new types.ChatGPTError(appError)
-          error.response = response
-          error.statusCode = response?.status
-          error.statusText = response?.statusText
-          throw error
-        }
-      }
-
-      if (res.user) {
-        this._user = res.user
-      }
-
-      this._accessTokenCache.set(KEY_ACCESS_TOKEN, accessToken)
-      return accessToken
-    } catch (err: any) {
-      if (this._debug) {
-        console.error(err)
-      }
-
-      const error = new types.ChatGPTError(
-        `ChatGPT failed to refresh auth token. ${err.toString()}`
-      )
-      error.response = response
-      error.statusCode = response?.status
-      error.statusText = response?.statusText
-      error.originalError = err
-      throw error
-    }
+  protected async _defaultGetMessageById(
+    id: string
+  ): Promise<types.ChatMessage> {
+    return this._messageStore.get(id)
   }
 
-  override async closeSession(): Promise<void> {
-    this._accessTokenCache.delete(KEY_ACCESS_TOKEN)
+  protected async _defaultUpsertMessage(
+    message: types.ChatMessage
+  ): Promise<void> {
+    this._messageStore.set(message.id, message)
   }
 }
